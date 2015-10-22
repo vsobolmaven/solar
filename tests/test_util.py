@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 from __future__ import unicode_literals
 
 from datetime import datetime
@@ -132,3 +133,11 @@ class UtilTest(TestCase):
         self.assertEqual(
             force_unicode(lp),
             "{!dismax bf='linear(rank,100,0)' v=$q1 qf='name^10 description' pf=name ps=2}")
+
+        safe_value = u"'Hello + \' world || і кирилиця!'"
+        self.assertEqual(
+            force_unicode(
+                LocalParams('dismax',
+                            **{'facet.prefix': SafeUnicode(safe_value)})),
+                u"{!dismax facet.prefix=%s}" % safe_value)
+
