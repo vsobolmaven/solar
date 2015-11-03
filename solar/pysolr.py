@@ -1,24 +1,24 @@
 # -*- coding: utf-8 -*-
-from __future__ import print_function
-from __future__ import unicode_literals
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function, unicode_literals
 
+import ast
 import datetime
 import logging
+import os
 import re
-import requests
 import time
-import types
-import ast
+# We can remove ExpatError when we drop support for Python 2.6:
+from xml.parsers.expat import ExpatError
+
+import requests
 
 try:
-    # Prefer lxml, if installed.
-    from lxml import etree as ET
+    from xml.etree import ElementTree as ET
 except ImportError:
-    try:
-        from xml.etree import cElementTree as ET
-    except ImportError:
-        raise ImportError("No suitable ElementTree implementation was found.")
+    raise ImportError("No suitable ElementTree implementation was found.")
+
+# Remove this when we drop Python 2.6:
+ParseError = getattr(ET, 'ParseError', SyntaxError)
 
 try:
     # Prefer simplejson, if installed.
@@ -41,6 +41,12 @@ except ImportError:
     import htmlentitydefs as htmlentities
 
 try:
+    # Python 3.X
+    from http.client import HTTPException
+except ImportError:
+    from httplib import HTTPException
+
+try:
     # Python 2.X
     unicode_char = unichr
 except NameError:
@@ -52,7 +58,7 @@ except NameError:
 
 __author__ = 'Daniel Lindsley, Joseph Kocherhans, Jacob Kaplan-Moss'
 __all__ = ['Solr']
-__version__ = (3, 1, 0)
+__version__ = (3, 3, 0)
 
 
 def get_version():
@@ -74,7 +80,7 @@ h = NullHandler()
 LOG.addHandler(h)
 
 # For debugging...
-if False:
+if os.environ.get("DEBUG_PYSOLR", "").lower() in ("true", "1"):
     LOG.setLevel(logging.DEBUG)
     stream = logging.StreamHandler()
     LOG.addHandler(stream)
@@ -215,7 +221,7 @@ class SolrError(Exception):
 class Results(object):
     def __init__(self, docs, hits, highlighting=None, facets=None,
                  spellcheck=None, stats=None, qtime=None, debug=None,
-                 grouped=None):
+                 grouped=None, nextCursorMark=None):
         self.docs = docs
         self.hits = hits
         self.highlighting = highlighting or {}
@@ -225,6 +231,7 @@ class Results(object):
         self.qtime = qtime
         self.debug = debug or {}
         self.grouped = grouped or {}
+        self.nextCursorMark = nextCursorMark or None
 
     def __len__(self):
         return len(self.docs)
@@ -250,11 +257,10 @@ class Solr(object):
         solr = pysolr.Solr('http://localhost:8983/solr', timeout=10)
 
     """
-    def __init__(self, url, decoder=None, timeout=60, max_get_params_length=1023):
+    def __init__(self, url, decoder=None, timeout=60):
         self.decoder = decoder or json.JSONDecoder()
         self.url = url
         self.timeout = timeout
-        self.max_get_params_length = max_get_params_length
         self.log = self._get_log()
         self.session = requests.Session()
         self.session.stream = False
@@ -291,17 +297,14 @@ class Solr(object):
         except AttributeError as err:
             raise SolrError("Unable to send HTTP method '{0}.".format(method))
 
+        # Everything except the body can be Unicode. The body must be
+        # encoded to bytes to work properly on Py3.
+        bytes_body = body
+
+        if bytes_body is not None:
+            bytes_body = force_bytes(body)
+
         try:
-            # Everything except the body can be Unicode. The body must be
-            # encoded to bytes to work properly on Py3.
-            bytes_body = body
-
-            if bytes_body is not None:
-                bytes_body = force_bytes(body)
-
-            if not 'content-type' in [key.lower() for key in headers.keys()]:
-                headers['Content-type'] = 'application/xml; charset=UTF-8'
-
             resp = requests_method(url, data=bytes_body, headers=headers, files=files,
                                    timeout=self.timeout)
         except requests.exceptions.Timeout as err:
@@ -313,6 +316,10 @@ class Solr(object):
             params = (url, err)
             self.log.error(error_message, *params, exc_info=True)
             raise SolrError(error_message % params)
+        except HTTPException as err:
+            error_message = "Unhandled error: %s %s: %s"
+            self.log.error(error_message, method, url, err, exc_info=True)
+            raise SolrError(error_message % (method, url, err))
 
         end_time = time.time()
         self.log.info("Finished '%s' (%s) with body '%s' in %0.3f seconds.",
@@ -331,7 +338,7 @@ class Solr(object):
         params['wt'] = 'json'
         params_encoded = safe_urlencode(params, True)
 
-        if len(params_encoded) <= self.max_get_params_length:
+        if len(params_encoded) < 1024:
             # Typical case.
             path = 'select/?%s' % params_encoded
             return self._send_request('get', path)
@@ -360,7 +367,7 @@ class Solr(object):
         path = 'terms/?%s' % safe_urlencode(params, True)
         return self._send_request('get', path)
 
-    def _update(self, message, clean_ctrl_chars=True, commit=True, waitFlush=None, waitSearcher=None):
+    def _update(self, message, clean_ctrl_chars=True, commit=True, softCommit=False, waitFlush=None, waitSearcher=None):
         """
         Posts the given xml message to http://<self.url>/update and
         returns the result.
@@ -379,6 +386,8 @@ class Solr(object):
 
         if commit is not None:
             query_vars.append('commit=%s' % str(bool(commit)).lower())
+        elif softCommit is not None:
+            query_vars.append('softCommit=%s' % str(bool(softCommit)).lower())
 
         if waitFlush is not None:
             query_vars.append('waitFlush=%s' % str(bool(waitFlush)).lower())
@@ -400,15 +409,24 @@ class Solr(object):
         Extract the actual error message from a solr response.
         """
         reason = resp.headers.get('reason', None)
-        full_html = None
+        full_response = None
 
         if reason is None:
-            reason, full_html = self._scrape_response(resp.headers, resp.content)
+            try:
+                # if response is in json format
+                reason = resp.json()['error']['msg']
+            except KeyError:
+                # if json response has unexpected structure
+                full_response = resp.content
+            except ValueError:
+                # otherwise we assume it's html
+                reason, full_html = self._scrape_response(resp.headers, resp.content)
+                full_response = unescape_html(full_html)
 
         msg = "[Reason: %s]" % reason
 
         if reason is None:
-            msg += "\n%s" % unescape_html(full_html)
+            msg += "\n%s" % full_response
 
         return msg
 
@@ -419,89 +437,69 @@ class Solr(object):
         # identify the responding server
         server_type = None
         server_string = headers.get('server', '')
-        content_type = headers.get('content-type', '')
 
         if server_string and 'jetty' in server_string.lower():
             server_type = 'jetty'
 
         if server_string and 'coyote' in server_string.lower():
-            import lxml.html
             server_type = 'tomcat'
 
         reason = None
         full_html = ''
         dom_tree = None
 
-        # Solr 4.0 json response
-        try:
-            data = self.decoder.decode(force_unicode(response))
-            error = data['error']
-            reason = error.get('msg') or error.get('trace')
-        except (ValueError, KeyError) as e:
-            pass
-
-        if reason is None:
-            # Solr 4.0 xml response
+        # In Python3, response can be made of bytes
+        if IS_PY3 and hasattr(response, 'decode'):
+            response = response.decode()
+        if response.startswith('<?xml'):
+            # Try a strict XML parse
             try:
-                tree = ET.fromstring(response)
-                lst_nodes = tree.findall('lst')
+                soup = ET.fromstring(response)
 
-                for lst_node in lst_nodes:
-                    if lst_node.get('name') == 'error':
-                        msg_node = lst_node.find('str')
-                        if msg_node is not None and msg_node.get('name') in ('msg', 'trace'):
-                            reason = msg_node.text
-                            break
-            except SyntaxError as e:
+                reason_node = soup.find('lst[@name="error"]/str[@name="msg"]')
+                tb_node = soup.find('lst[@name="error"]/str[@name="trace"]')
+                if reason_node is not None:
+                    full_html = reason = reason_node.text.strip()
+                if tb_node is not None:
+                    full_html = tb_node.text.strip()
+                    if reason is None:
+                        reason = full_html
+
+                # Since we had a precise match, we'll return the results now:
+                if reason and full_html:
+                    return reason, full_html
+            except (ParseError, ExpatError):
+                # XML parsing error, so we'll let the more liberal code handle it.
                 pass
 
-        if reason is None:
-            if server_type == 'tomcat':
-                # Tomcat doesn't produce a valid XML response
+        if server_type == 'tomcat':
+            # Tomcat doesn't produce a valid XML response or consistent HTML:
+            m = re.search(r'<(h1)[^>]*>\s*(.+?)\s*</\1>', response, re.IGNORECASE)
+            if m:
+                reason = m.group(2)
+            else:
+                full_html = "%s" % response
+        else:
+            # Let's assume others do produce a valid XML response
+            try:
+                dom_tree = ET.fromstring(response)
+                reason_node = None
 
-                soup = lxml.html.fromstring(response)
-                body_node = soup.find('body')
-                p_nodes = body_node.cssselect('p')
+                # html page might be different for every server
+                if server_type == 'jetty':
+                    reason_node = dom_tree.find('body/pre')
+                else:
+                    reason_node = dom_tree.find('head/title')
 
-                for p_node in p_nodes:
-                    children = p_node.getchildren()
-
-                    if len(children) >= 2 and 'message' in children[0].text.lower():
-                        reason = children[1].text
-
-                    if len(children) >= 2 and hasattr(children[0], 'renderContents'):
-                        if 'description' in children[0].renderContents().lower():
-                            if reason is None:
-                                reason = children[1].renderContents()
-                            else:
-                                reason += ", " + children[1].renderContents()
+                if reason_node is not None:
+                    reason = reason_node.text
 
                 if reason is None:
-                    from lxml.html.clean import clean_html
-                    full_html = clean_html(response)
-            else:
-                # Let's assume others do produce a valid XML response
-                try:
-                    dom_tree = ET.fromstring(response)
-                    reason_node = None
+                    full_html = ET.tostring(dom_tree)
+            except (SyntaxError, ExpatError) as err:
+                full_html = "%s" % response
 
-                    # html page might be different for every server
-                    if server_type == 'jetty':
-                        reason_node = dom_tree.find('body/pre')
-                    else:
-                        reason_node = dom_tree.find('head/title')
-
-                    if reason_node is not None:
-                        reason = reason_node.text
-
-                    if reason is None:
-                        full_html = ET.tostring(dom_tree)
-                except SyntaxError as err:
-                    pass
-
-        if reason is None and not full_html:
-            full_html = "%s" % response                
-
+        full_html = force_unicode(full_html)
         full_html = full_html.replace('\n', '')
         full_html = full_html.replace('\r', '')
         full_html = full_html.replace('<br/>', '')
@@ -665,6 +663,9 @@ class Solr(object):
         if result.get('grouped'):
             result_kwargs['grouped'] = result['grouped']
 
+        if result.get('nextCursorMark'):
+            result_kwargs['nextCursorMark'] = result['nextCursorMark']
+
         response = result.get('response') or {}
         numFound = response.get('numFound', 0)
         self.log.debug("Found '%s' search results.", numFound)
@@ -773,62 +774,53 @@ class Solr(object):
         self.log.debug("Found '%d' Term suggestions results.", sum(len(j) for i, j in res.items()))
         return res
 
-    def _build_doc(self, doc, boost=None):
+    def _build_doc(self, doc, boost=None, fieldUpdates=None):
         doc_elem = ET.Element('doc')
-        
-        # Helper function
-        def _add_doc_elem(attrs, value):
-            if isinstance(value, (list, tuple)):
-                values = value
-            else:
-                values = (value, )
-            for bit in values:
-                if self._is_null_value(bit):
-                    continue
-                field = ET.Element('field', **attrs)
-                field.text = self._from_python(bit)
-                doc_elem.append(field)
 
         for key, value in doc.items():
             if key == 'boost':
                 doc_elem.set('boost', force_unicode(value))
                 continue
 
-            # Handle atomic updates
-            if isinstance(value, dict):
-                for _key, _values in value.iteritems():
-                    attrs = {'name': key, 'update': _key}
-
-                    if isinstance(_values, types.NoneType):
-                        attrs['null'] = 'true'
-
-                    if boost and key in boost:
-                        attrs['boost'] = force_unicode(boost[key])
-
-                    _add_doc_elem(attrs, _values)
+            # To avoid multiple code-paths we'd like to treat all of our values as iterables:
+            if isinstance(value, (list, tuple)):
+                values = value
             else:
+                values = (value, )
+
+            for bit in values:
+                if self._is_null_value(bit):
+                    continue
+
                 attrs = {'name': key}
+
+                if fieldUpdates and key in fieldUpdates:
+                    attrs['update'] = fieldUpdates[key]
 
                 if boost and key in boost:
                     attrs['boost'] = force_unicode(boost[key])
 
-                _add_doc_elem(attrs, value)
+                field = ET.Element('field', **attrs)
+                field.text = self._from_python(bit)
+
+                doc_elem.append(field)
 
         return doc_elem
 
-    def add(self, docs, commit=True, boost=None, commitWithin=None, waitFlush=None, waitSearcher=None):
+    def add(self, docs, boost=None, fieldUpdates=None, commit=True, softCommit=False, commitWithin=None, waitFlush=None, waitSearcher=None):
         """
         Adds or updates documents.
 
         Requires ``docs``, which is a list of dictionaries. Each key is the
         field name and each value is the value to index.
-        Supports Solr 4.x atomic updates. To use them pass as value dict in 
-        format {"op": "value"}, where "op" can be one of: set, inc, add.
-        Set value to None to delete field.
 
         Optionally accepts ``commit``. Default is ``True``.
 
+        Optionally accepts ``softCommit``. Default is ``False``.
+
         Optionally accepts ``boost``. Default is ``None``.
+
+        Optionally accepts ``fieldUpdates``. Default is ``None``.
 
         Optionally accepts ``commitWithin``. Default is ``None``.
 
@@ -847,23 +839,7 @@ class Solr(object):
                     "id": "doc_2",
                     "title": "The Banana: Tasty or Dangerous?",
                 },
-                {
-                    "id": "doc_3",
-                    "title": {"set": "Ala have cat"}
-                }
             ])
-
-        Starting from Solr 4.0 it's possible to using atomic updates.
-
-        Simply pass instead of raw value dict in format like::
-
-            {
-                "id": "doc_1",
-                "title": {"set": "A test document"},
-            }
-
-        where possible operators are: ``set``, ``inc`` and ``add``.
-
         """
         start_time = time.time()
         self.log.debug("Starting to build add request...")
@@ -873,7 +849,7 @@ class Solr(object):
             message.set('commitWithin', commitWithin)
 
         for doc in docs:
-            message.append(self._build_doc(doc, boost=boost))
+            message.append(self._build_doc(doc, boost=boost, fieldUpdates=fieldUpdates))
 
         # This returns a bytestring. Ugh.
         m = ET.tostring(message, encoding='utf-8')
@@ -882,7 +858,7 @@ class Solr(object):
 
         end_time = time.time()
         self.log.debug("Built add request of %s docs in %0.2f seconds.", len(message), end_time - start_time)
-        return self._update(m, commit=commit, waitFlush=waitFlush, waitSearcher=waitSearcher)
+        return self._update(m, commit=commit, softCommit=softCommit, waitFlush=waitFlush, waitSearcher=waitSearcher)
 
     def delete(self, id=None, q=None, commit=True, waitFlush=None, waitSearcher=None):
         """
@@ -915,7 +891,7 @@ class Solr(object):
 
         return self._update(m, commit=commit, waitFlush=waitFlush, waitSearcher=waitSearcher)
 
-    def commit(self, waitFlush=None, waitSearcher=None, expungeDeletes=None):
+    def commit(self, softCommit=False, waitFlush=None, waitSearcher=None, expungeDeletes=None):
         """
         Forces Solr to write the index data to disk.
 
@@ -924,6 +900,8 @@ class Solr(object):
         Optionally accepts ``waitFlush``. Default is ``None``.
 
         Optionally accepts ``waitSearcher``. Default is ``None``.
+
+        Optionally accepts ``softCommit``. Default is ``False``.
 
         Usage::
 
@@ -935,7 +913,7 @@ class Solr(object):
         else:
             msg = '<commit />'
 
-        return self._update(msg, waitFlush=waitFlush, waitSearcher=waitSearcher)
+        return self._update(msg, softCommit=softCommit, waitFlush=waitFlush, waitSearcher=waitSearcher)
 
     def optimize(self, waitFlush=None, waitSearcher=None, maxSegments=None):
         """
@@ -967,7 +945,7 @@ class Solr(object):
 
             http://wiki.apache.org/solr/ExtractingRequestHandler
 
-        The ExtractingRequestHandler has a very simply model: it extracts
+        The ExtractingRequestHandler has a very simple model: it extracts
         contents and metadata from the uploaded file and inserts it directly
         into the index. This is rarely useful as it allows no way to store
         additional data or otherwise customize the record. Instead, by default
@@ -1045,28 +1023,30 @@ class SolrCoreAdmin(object):
         self.url = url
 
     def _get_url(self, url, params={}, headers={}):
-        resp = requests.get(url, data=safe_urlencode(params), headers=headers)
+        resp = requests.get(url, params=safe_urlencode(params), headers=headers)
         return force_unicode(resp.content)
 
-    def status(self, core=None):
+    def status(self, core=None, **params):
         """http://wiki.apache.org/solr/CoreAdmin#head-9be76f5a459882c5c093a7a1456e98bea7723953"""
-        params = {
+        params = params.copy()
+        params.update({
             'action': 'STATUS',
-        }
+        })
 
         if core is not None:
             params.update(core=core)
 
         return self._get_url(self.url, params=params)
 
-    def create(self, name, instance_dir=None, config='solrcofig.xml', schema='schema.xml'):
+    def create(self, name, instance_dir=None, config='solrconfig.xml', schema='schema.xml', **params):
         """http://wiki.apache.org/solr/CoreAdmin#head-7ca1b98a9df8b8ca0dcfbfc49940ed5ac98c4a08"""
-        params = {
-            'action': 'STATUS',
+        params = params.copy()
+        params.update({
+            'action': 'CREATE',
             'name': name,
             'config': config,
             'schema': schema,
-        }
+        })
 
         if instance_dir is None:
             params.update(instanceDir=name)
@@ -1075,42 +1055,91 @@ class SolrCoreAdmin(object):
 
         return self._get_url(self.url, params=params)
 
-    def reload(self, core):
+    def reload(self, core, **params):
         """http://wiki.apache.org/solr/CoreAdmin#head-3f125034c6a64611779442539812067b8b430930"""
-        params = {
+        params = params.copy()
+        params.update({
             'action': 'RELOAD',
             'core': core,
-        }
+        })
         return self._get_url(self.url, params=params)
 
-    def rename(self, core, other):
+    def rename(self, core, other, **params):
         """http://wiki.apache.org/solr/CoreAdmin#head-9473bee1abed39e8583ba45ef993bebb468e3afe"""
-        params = {
+        params = params.copy()
+        params.update({
             'action': 'RENAME',
             'core': core,
             'other': other,
-        }
+        })
         return self._get_url(self.url, params=params)
 
-    def swap(self, core, other):
+    def swap(self, core, other, **params):
         """http://wiki.apache.org/solr/CoreAdmin#head-928b872300f1b66748c85cebb12a59bb574e501b"""
-        params = {
+        params = params.copy()
+        params.update({
             'action': 'SWAP',
             'core': core,
             'other': other,
-        }
+        })
         return self._get_url(self.url, params=params)
 
-    def unload(self, core):
+    def unload(self, core, **params):
         """http://wiki.apache.org/solr/CoreAdmin#head-f5055a885932e2c25096a8856de840b06764d143"""
-        params = {
+        params = params.copy()
+        params.update({
             'action': 'UNLOAD',
             'core': core,
-        }
+        })
         return self._get_url(self.url, params=params)
 
-    def load(self, core):
+    def load(self, core, **params):
         raise NotImplementedError('Solr 1.4 and below do not support this operation.')
+
+
+class SolrSchemaAdmin(object):
+    """
+    Handles schema admin operations:
+    see http://wiki.apache.org/solr/SchemaRESTAPI
+
+    Operations offered by Solr are:
+        * Modify the Schema (not implemented yet)
+          * Add a New Field (not implemented yet)
+          * Add a New Copy Field Rule (not implemented yet)
+          * Add a Dynamic Field Rule (not implemented yet)
+          * Add a New Field Type (not implemented yet)
+          * Multiple Commands in a Single POST (not implemented yet)
+          * Schema Changes among Replicas (not implemented yet)
+        * Retrieve Schema Information
+          * Retrieve the Entire Schema (not implemented yet)
+          * List Fields
+          * List Dynamic Fields (not implemented yet)
+          * List Field Types (not implemented yet)
+          * List Copy Fields (not implemented yet)
+          * Show Schema Name (not implemented yet)
+          * Show the Schema Version (not implemented yet)
+          * List UniqueKey (not implemented yet)
+          * Show Global Similarity (not implemented yet)
+          * Get the Default Query Operator (not implemented yet)
+    """
+    def __init__(self, url, *args, **kwargs):
+        super(SolrSchemaAdmin, self).__init__(*args, **kwargs)
+        self.url = url
+        self.decoder = json.JSONDecoder()
+
+    def _get_url(self, url, params={}, headers={}):
+        resp = requests.get(url, params=safe_urlencode(params), headers=headers)
+        return force_unicode(resp.content)
+
+    def list_fields(self, collection, fieldname=None, **params):
+        """
+        https://cwiki.apache.org/confluence/display/solr/Schema+API#SchemaAPI-ListFields
+        """
+        url = '{}/{}/schema/fields'.format(self.url, collection)
+        if fieldname:
+            url = '{}/{}'.format(url, fieldname)
+        response = self._get_url(url, params=params)
+        return self.decoder.decode(response)
 
 
 # Using two-tuples to preserve order.
