@@ -72,10 +72,12 @@ class QueryTest(TestCase):
         self.assertIn('bf=linear(rank,1,0)^100 recip(ms(NOW/HOUR,dt_created),3.16e-11,1,1)', raw_query)
         self.assertIn('defType=dismax', raw_query)
 
+        v = X(SafeUnicode('"nokia lumia"')) | X(SafeUnicode('"nokia n900"'))
         q = (
             SolrSearcher()
-            .search(LocalParams('dismax', bf=func.linear('rank', 100, 0),
-                                qf='name', v=X(SafeUnicode('"nokia lumia"')) | X(SafeUnicode('"nokia n900"'))))
+          .search(LocalParams(type='dismax', bf=func.linear('rank', 100, 0),
+                              qf='name', \
+                              v=v))
         )
         raw_query = str(q)
 
@@ -88,9 +90,9 @@ class QueryTest(TestCase):
         q = (
             SolrSearcher()
             .search(
-                X(_query_=LocalParams('dismax', bf=func.linear('rank', 100, 0),
+                X(_query_=LocalParams(type='dismax', bf=func.linear('rank', 100, 0),
                                       qf='name^10', v='nokia'))
-                & X(_query_=LocalParams('dismax', bf=func.linear('rank', 100, 0),
+                & X(_query_=LocalParams(type='dismax', bf=func.linear('rank', 100, 0),
                                         qf='description', v='nokia lumia AND')))
         )
         raw_query = str(q)

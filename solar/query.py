@@ -55,7 +55,7 @@ class SolrQuery(object):
     def __init__(self, searcher, q, *args, **kwargs):
         self.searcher = searcher
 
-        self._q_local_params = LocalParams(kwargs.pop('_local_params', None))
+        self._q_local_params = LocalParams(kwargs.pop('_local_params', {}))
         self._q = q
         self._q_args = args
         self._q_kwargs = kwargs
@@ -388,7 +388,7 @@ class SolrQuery(object):
 
     @_with_clone
     def facet_field(self, field,
-                    local_params=None, instance_mapper=None, type=None,
+                    local_params={}, instance_mapper=None, type=None,
                     limit=None, offset=None, mincount=None, sort=None,
                     prefix=None, missing=None, method=None, **kwargs):
         # for compatibility
@@ -407,7 +407,7 @@ class SolrQuery(object):
     @_with_clone
     def facet_range(self, field, start, end, gap,
                     hardend=None, other=None, include=None,
-                    local_params=None, type=None, **kwargs):
+                    local_params={}, type=None, **kwargs):
         local_params = kwargs.pop('_local_params', local_params)
         type = kwargs.pop('_type', type)
         facet =FacetRange(

@@ -9,10 +9,7 @@ import logging
 from copy import deepcopy
 from datetime import datetime, date
 
-try:
-    from collections import OrderedDict
-except ImportError:
-    from ordereddict import OrderedDict
+from collections import OrderedDict
 
 from .compat import (
     PY2, text_type, string_types, binary_type, int_types, force_unicode,
@@ -144,13 +141,13 @@ class LocalParams(OrderedDict):
             other = OrderedDict(_other)
         else:
             other = OrderedDict(type=other)
-        
+
         other.update(sorted(list(kwargs.items()), key=lambda p: p[0]))
         for k, v in other.items():
             self.add(k, v)
     # replace OrderedDict.__update to fix lp.update(['dismax'])
-    _OrderedDict__update = update
-    
+    # OrderedDict.__update = update
+
     def add(self, key, value=None):
         if value is None:
             if isinstance(key, (list, tuple)):
@@ -294,7 +291,7 @@ def fq_from_tuple(x):
     field_val = process_field(field, op, x[1])
     return field_val
 
-def make_fq(x, local_params=None):
+def make_fq(x, local_params={}):
     def _make_fq(x, level):
         fq = []
         for child in x.children:
@@ -326,7 +323,7 @@ def make_fq(x, local_params=None):
         force_unicode(local_params),
         (' {} '.format(x.connector)).join(_make_fq(x, 0)))
 
-def make_q(q=None, local_params=None, *args, **kwargs):
+def make_q(q=None, local_params={}, *args, **kwargs):
     if q is None and not args and not kwargs:
         x = X_ALL
     else:
@@ -345,7 +342,7 @@ def make_param(param, op):
 def _pop_from_kwargs(kwargs, key):
     if '_{}'.format(key) in kwargs:
         return kwargs.pop('_{}'.format(key))
-    return kwargs.pop(key, None)
+    return kwargs.pop(key, {})
 
 def wrap_list(v):
     if not isinstance(v, (list, tuple)):

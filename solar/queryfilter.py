@@ -259,7 +259,7 @@ class BaseFilter(object):
 class Filter(BaseFilter):
     fq_connector = X.OR
 
-    def __init__(self, name, field=None, type=None, local_params=None,
+    def __init__(self, name, field=None, type=None, local_params={},
                  select_multiple=True, default=None, **kwargs):
         super(Filter, self).__init__(name, type=type)
         self.field = field or name
@@ -383,7 +383,7 @@ class FacetFilter(Filter):
     get_title = None
     
     def __init__(self, name, field=None, filter_value_cls=None, type=None,
-                 local_params=None, instance_mapper=None, get_title=None,
+                 local_params={}, instance_mapper=None, get_title=None,
                  select_multiple=True, ensure_selected_values=False, **kwargs):
         super(FacetFilter, self).__init__(name, field, type=type,
                                           select_multiple=select_multiple, **kwargs)
@@ -586,7 +586,7 @@ class PivotFilter(BaseFilter, FacetPivotFilterValueMixin):
                 
                 
 class FacetQueryFilterValue(object):
-    def __init__(self, name, fq, local_params=None, title=None, **kwargs):
+    def __init__(self, name, fq, local_params={}, title=None, **kwargs):
         self.filter_name = None
         self.value = name
         self.local_params = LocalParams(

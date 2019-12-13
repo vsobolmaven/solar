@@ -276,13 +276,13 @@ class QueryFilterTest(TestCase):
                     'dist',
                     FacetQueryFilterValue(
                         'd5',
-                        None, _local_params=LocalParams('geofilt', d=5, tag='d5')),
+                        None, _local_params=LocalParams(type='geofilt', d=5, tag='d5')),
                     FacetQueryFilterValue(
                         'd10',
-                        None, _local_params=LocalParams('geofilt', d=10, tag='d10')),
+                        None, _local_params=LocalParams(type='geofilt', d=10, tag='d10')),
                     FacetQueryFilterValue(
                         'd20',
-                        None, _local_params=LocalParams('geofilt', d=20, tag='d20')),
+                        None, _local_params=LocalParams(type='geofilt', d=20, tag='d20')),
                     select_multiple=False))
             qf.add_ordering(
                 OrderingFilter(

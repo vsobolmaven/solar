@@ -76,7 +76,7 @@ class SolrResults(object):
             if facet.key == key:
                 return facet
 
-    def get_facet_query(self, key_or_x, local_params=None):
+    def get_facet_query(self, key_or_x, local_params={}):
         if isinstance(key_or_x, X):
             key = make_fq(key_or_x, LocalParams(local_params))
         else:

@@ -84,9 +84,9 @@ class UtilTest(TestCase):
                          "status:0 OR status:1")
         self.assertEqual(make_fq(X(status=SafeUnicode('"0"'))),
                          'status:"0"')
-        self.assertEqual(make_fq(X(LocalParams('dismax', qf='name', v=X('nokia lumia')))),
+        self.assertEqual(make_fq(X(LocalParams(type='dismax', qf='name', v=X('nokia lumia')))),
                          "{!dismax qf=name v='nokia lumia'}")
-        self.assertEqual(make_fq(X(_query_=LocalParams('dismax', qf='name', v=X('nokia lumia')))),
+        self.assertEqual(make_fq(X(_query_=LocalParams(type='dismax', qf='name', v=X('nokia lumia')))),
                          "_query_:\"{!dismax qf=name v='nokia lumia'}\"")
 
     def test_local_params(self):
@@ -100,30 +100,30 @@ class UtilTest(TestCase):
                          '{!ex=tag key=category}')
         self.assertEqual(force_unicode(LocalParams(ex=['f1', 'f2'])),
                          '{!ex=f1,f2}')
-        self.assertEqual(force_unicode(LocalParams('frange', l=0, u=5)),
+        self.assertEqual(force_unicode(LocalParams(type='frange', l=0, u=5)),
                          '{!frange l=0 u=5}')
-        self.assertEqual(force_unicode(LocalParams(['geofilt', ('d', 10), ('key', 'd10')])),
+        self.assertEqual(force_unicode(LocalParams([('type', 'geofilt'), ('d', 10), ('key', 'd10')])),
                          '{!geofilt d=10 key=d10}')
         self.assertEqual(force_unicode(LocalParams({'type': 'join', 'from': 'id', 'to': 'manu_id'})),
                          '{!join from=id to=manu_id}')
-        self.assertEqual(force_unicode(LocalParams()), '')
-        self.assertEqual(force_unicode(LocalParams(None)), '')
+        self.assertEqual(force_unicode(LocalParams({})), '')
+        self.assertEqual(force_unicode(LocalParams({})), '')
 
-        self.assertEqual(force_unicode(LocalParams('dismax', v='OR test')),
+        self.assertEqual(force_unicode(LocalParams(type='dismax', v='OR test')),
                          """{!dismax v='or test'}""")
-        self.assertEqual(force_unicode(LocalParams('dismax', v='"test"')),
+        self.assertEqual(force_unicode(LocalParams(type='dismax', v='"test"')),
                          """{!dismax v='\\"test\\"'}""")
-        self.assertEqual(force_unicode(LocalParams('dismax', v='test\'')),
+        self.assertEqual(force_unicode(LocalParams(type='dismax', v='test\'')),
                          """{!dismax v='test\\\\\''}""")
         self.assertRaises(ValueError, LocalParams, '{dismax}', v='test')
         self.assertRaises(ValueError, LocalParams, ['dismax', ('!v', 'test')])
         
         self.assertEqual(
-            force_unicode(LocalParams('dismax', qf='name',
+            force_unicode(LocalParams(type='dismax', qf='name',
                             v=X(SafeUnicode('"nokia lumia"')) | X(SafeUnicode('"nokia n900"')))),
             """{!dismax qf=name v='(\\"nokia lumia\\" OR \\"nokia n900\\")'}""")
 
-        lp = LocalParams('dismax', bf=func.linear('rank', 100, 0), v='$q1')
+        lp = LocalParams(type='dismax', bf=func.linear('rank', 100, 0), v='$q1')
         lp.update(LocalParams(qf='name^10 description'))
         lp.add('pf', 'name')
         lp.add('ps', 2)
@@ -138,7 +138,7 @@ class UtilTest(TestCase):
         safe_value = u"'Hello + \' world || і кирилиця!'"
         self.assertEqual(
             force_unicode(
-                LocalParams('dismax',
+                LocalParams(type='dismax',
                             **{'facet.prefix': SafeUnicode(safe_value)})),
                 u"{!dismax facet.prefix=%s}" % safe_value)
 

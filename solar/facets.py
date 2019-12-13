@@ -100,7 +100,7 @@ class FacetValue(object):
 
 class FacetRange(object):
     def __init__(self, field, start, end, gap,
-                 local_params=None, type=None, **facet_params):
+                 local_params={}, type=None, **facet_params):
         self.field = field
         self.orig_start = self.start = start
         self.orig_end = self.end = end
@@ -160,7 +160,7 @@ class FacetRangeValue(object):
 
         
 class FacetQuery(object):
-    def __init__(self, fq, local_params=None):
+    def __init__(self, fq, local_params={}):
         self.fq = fq
         self.local_params = LocalParams(local_params)
         self.key = self.local_params.get('key',
