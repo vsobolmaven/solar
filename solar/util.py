@@ -194,6 +194,8 @@ class LocalParams(OrderedDict):
                 value = ','.join(value)
             if key == 'type':
                 parts.insert(0, value)
+            elif isinstance(value, (SafeString, SafeUnicode)):
+                parts.append('{}={}'.format(key, value))
             else:
                 replace_words = True
                 if isinstance(value, X):
