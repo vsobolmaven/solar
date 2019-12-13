@@ -1,8 +1,9 @@
 from __future__ import unicode_literals
 
+from __future__ import absolute_import
 import re
 import math
-import urllib
+import six.moves.urllib.request, six.moves.urllib.parse, six.moves.urllib.error
 import decimal
 import logging
 from copy import deepcopy
@@ -55,7 +56,7 @@ def process_special_characters(value, chars=None):
 
 def contains_special_characters(value, chars=None):
     chars = chars or SPECIAL_CHARACTERS
-    return any(map(lambda c: c in value, chars))
+    return any([c in value for c in chars])
 
 def safe_solr_input(value):
     if isinstance(value, (SafeString, SafeUnicode)):
@@ -144,7 +145,7 @@ class LocalParams(OrderedDict):
         else:
             other = OrderedDict(type=other)
         
-        other.update(sorted(kwargs.items(), key=lambda p: p[0]))
+        other.update(sorted(list(kwargs.items()), key=lambda p: p[0]))
         for k, v in other.items():
             self.add(k, v)
     # replace OrderedDict.__update to fix lp.update(['dismax'])

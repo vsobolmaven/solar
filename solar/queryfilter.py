@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 
+from __future__ import absolute_import
 import math
 import weakref
 from copy import deepcopy
@@ -11,6 +12,8 @@ from .util import X, LocalParams, make_fq, process_value, wrap_list, _pop_from_k
 from .types import instantiate, Integer, Long, Float 
 from .facets import FacetValue
 from .compat import PY2, force_unicode, zip_longest
+import six
+from six.moves import zip
 
 
 def exact_op(f, v):
@@ -146,7 +149,7 @@ class SimpleCodec(BaseCodec):
         types = types or {}
         data = defaultdict(list)
         # sort is needed to pass tests
-        for p, v in sorted(starmap(lambda p, v: (force_unicode(p), v), params.items())):
+        for p, v in sorted(starmap(lambda p, v: (force_unicode(p), v), list(params.items()))):
             ops = p.split(self.DEFAULT_OP_SEP)
             name = ops[0]
             if len(ops) == 1:
@@ -515,7 +518,7 @@ class PivotFilter(BaseFilter, FacetPivotFilterValueMixin):
         local_params['key'] = self.name
         local_params.merge({'ex': self.name})
         query = query.facet_pivot(
-            *zip(self._pivot_fields, self._pivot_kwargs),
+            *list(zip(self._pivot_fields, self._pivot_kwargs)),
             _local_params=local_params)
         fqs = []
         for op, values in params:
@@ -595,7 +598,7 @@ class FacetQueryFilterValue(object):
         self.selected = False
 
     def __unicode__(self):
-        return unicode(self.title)
+        return six.text_type(self.title)
                     
     @property
     def _key(self):
@@ -738,7 +741,7 @@ class OrderingValue(object):
         self.selected = False
 
     def __unicode__(self):
-        return unicode(self.title)
+        return six.text_type(self.title)
 
     @property
     def asc(self):

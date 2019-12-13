@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 
+from __future__ import absolute_import
 import re
 import sys
 import logging
@@ -85,7 +86,7 @@ class SolrQuery(object):
         
         params = []
         params.append(('q', self._make_q()))
-        params.extend(self._prepare_params().items())
+        params.extend(list(self._prepare_params().items()))
         parts = []
         for p, v in params:
             if not isinstance(v, (list, tuple)):
@@ -174,7 +175,7 @@ class SolrQuery(object):
         if 'qf' in params:
             params['qf'] = ' '.join(
                 starmap('{}^{}'.format,
-                        filter(lambda fw: fw[1], params['qf'])))
+                        [fw for fw in params['qf'] if fw[1]]))
         if 'fl' not in params:
             params['fl'] = ('*', 'score')
 
@@ -303,7 +304,7 @@ class SolrQuery(object):
     @_with_clone
     def qf(self, fields):
         if isinstance(fields, dict):
-            fields = fields.items()
+            fields = list(fields.items())
         self._params['qf'] = fields
 
     @_with_clone

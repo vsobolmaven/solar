@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 
+from __future__ import absolute_import
 from datetime import datetime
 from collections import namedtuple
 
@@ -12,6 +13,7 @@ from solar.compat import force_unicode
 from solar import func
 
 from .base import TestCase
+from six.moves import zip
 
 
 Obj = namedtuple('Obj', ['id', 'name'])

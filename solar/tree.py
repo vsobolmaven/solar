@@ -3,6 +3,7 @@ A class for storing a tree graph. Primarily used for filter constructs in the
 ORM.
 """
 
+from __future__ import absolute_import
 from copy import deepcopy
 
 class Node(object):

@@ -11,6 +11,9 @@ import time
 from xml.parsers.expat import ExpatError
 
 import requests
+import six
+from six import unichr
+from six.moves import zip
 
 try:
     from xml.etree import ElementTree as ET
@@ -31,20 +34,20 @@ try:
     from urllib.parse import urlencode
 except ImportError:
     # Python 2.X
-    from urllib import urlencode
+    from six.moves.urllib.parse import urlencode
 
 try:
     # Python 3.X
     import html.entities as htmlentities
 except ImportError:
     # Python 2.X
-    import htmlentitydefs as htmlentities
+    import six.moves.html_entities as htmlentities
 
 try:
     # Python 3.X
     from http.client import HTTPException
 except ImportError:
-    from httplib import HTTPException
+    from six.moves.http_client import HTTPException
 
 try:
     # Python 2.X
@@ -88,7 +91,7 @@ if os.environ.get("DEBUG_PYSOLR", "").lower() in ("true", "1"):
 
 def is_py3():
     try:
-        basestring
+        six.string_types
         return False
     except NameError:
         return True
@@ -111,8 +114,8 @@ def force_unicode(value):
         # Python 2.X
         if isinstance(value, str):
             value = value.decode('utf-8', 'replace')
-        elif not isinstance(value, basestring):
-            value = unicode(value)
+        elif not isinstance(value, six.string_types):
+            value = six.text_type(value)
 
     return value
 
@@ -125,7 +128,7 @@ def force_bytes(value):
         if isinstance(value, str):
             value = value.encode('utf-8', 'backslashreplace')
     else:
-        if isinstance(value, unicode):
+        if isinstance(value, six.text_type):
             value = value.encode('utf-8')
 
     return value
@@ -172,7 +175,7 @@ def safe_urlencode(params, doseq=0):
         return urlencode(params, doseq)
 
     if hasattr(params, "items"):
-        params = params.items()
+        params = list(params.items())
 
     new_params = list()
 
@@ -532,7 +535,7 @@ class Solr(object):
             else:
                 # Python 2.X
                 if isinstance(value, str):
-                    value = unicode(value, errors='replace')
+                    value = six.text_type(value, errors='replace')
 
             value = "{0}".format(value)
 
@@ -542,7 +545,7 @@ class Solr(object):
         """
         Converts values from Solr to native Python values.
         """
-        if isinstance(value, (int, float, long, complex)):
+        if isinstance(value, (int, float, int, complex)):
             return value
 
         if isinstance(value, (list, tuple)):
@@ -565,7 +568,7 @@ class Solr(object):
             if isinstance(value, str):
                 value = force_unicode(value)
 
-            if isinstance(value, basestring):
+            if isinstance(value, six.string_types):
                 is_string = True
 
         if is_string == True:
@@ -605,7 +608,7 @@ class Solr(object):
                 return True
         else:
             # Python 2.X
-            if isinstance(value, basestring) and len(value) == 0:
+            if isinstance(value, six.string_types) and len(value) == 0:
                 return True
 
         # TODO: This should probably be removed when solved in core Solr level?
@@ -699,7 +702,7 @@ class Solr(object):
         result = self.decoder.decode(response)
 
         if id is not None:
-            docs = list(filter(None, [result.get('doc')]))
+            docs = list([_f for _f in [result.get('doc')] if _f])
             numFound = len(docs)
         else:
             response = result.get('response') or {}
@@ -761,7 +764,7 @@ class Solr(object):
         # in Solr 3.x the value of terms is a dict:
         #   {"field_name": ["dance",23,"dancers",10,"dancing",8,"dancer",6]}
         if isinstance(terms, (list, tuple)):
-            terms = dict(zip(terms[0::2], terms[1::2]))
+            terms = dict(list(zip(terms[0::2], terms[1::2])))
 
         for field, values in terms.items():
             tmp = list()

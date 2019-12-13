@@ -1,10 +1,12 @@
 from __future__ import unicode_literals
 
+from __future__ import absolute_import
 import inspect
 import datetime
 
 from .pysolr import DATETIME_REGEX
 from .compat import force_unicode
+from six.moves import map
 
 
 def instantiate(typeobj, *args, **kwargs):
@@ -81,7 +83,7 @@ class DateTime(Type):
         m = DATETIME_REGEX.match(value)
         if not m:
             raise ValueError("Cannot convert {!r} to datetime".format(value))
-        return datetime.datetime(*map(int, filter(None, m.groups())))
+        return datetime.datetime(*list(map(int, [_f for _f in m.groups() if _f])))
 
 
 class Text(Type):

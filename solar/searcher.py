@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 
+from __future__ import absolute_import
 import random
 
 from .compat import text_type, with_metaclass
@@ -8,6 +9,7 @@ from .query import SolrQuery
 from .util import SafeUnicode, X, make_q
 from .grouped import Group
 from .document import Document
+from six.moves import map
 
 
 class SolrSearcherMeta(type):
@@ -99,7 +101,7 @@ class SolrSearcher(with_metaclass(SolrSearcherMeta, object)):
         else:
             model = self.model
         db_query = db_query.filter(
-            getattr(model, self.db_field).in_(converted_ids_to_ids.keys()))
+            getattr(model, self.db_field).in_(list(converted_ids_to_ids.keys())))
         instances = {}
         for obj in db_query:
             orig_id = converted_ids_to_ids.get(obj.id)
@@ -147,7 +149,7 @@ class CommonSearcher(SolrSearcher):
         if id:
             id = self.get_unique_value(id)
         if ids:
-            ids = map(self.get_unique_value, ids)
+            ids = list(map(self.get_unique_value, ids))
         return super(CommonSearcher, self).get(id=id, ids=ids, **kwargs)
 
     def delete(self, *args, **kwargs):

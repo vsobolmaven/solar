@@ -4,7 +4,7 @@ from __future__ import unicode_literals
 class Document(object):
     def __init__(self, _results=None, **raw_doc):
         self._results = _results
-        self._fields = raw_doc.keys()
+        self._fields = list(raw_doc.keys())
         for key in raw_doc:
             setattr(self, key, raw_doc[key])
 

@@ -1,4 +1,8 @@
+from __future__ import absolute_import
 import sys
+import six
+from six.moves import zip_longest
+from six import unichr
 PY2 = sys.version_info[0] == 2
 
 
@@ -9,14 +13,14 @@ if not PY2:
     unichr = chr
     int_types = (int,)
 else:
-    text_type = unicode
-    string_types = (str, unicode)
+    text_type = six.text_type
+    string_types = (str, six.text_type)
     binary_type = bytes
     unichr = unichr
-    int_types = (int, long)
+    int_types = six.integer_types
 
 if PY2:
-    from itertools import izip_longest as zip_longest
+    
 else:
     from itertools import zip_longest
 
@@ -37,8 +41,8 @@ def force_unicode(value):
         # Python 2.X
         if isinstance(value, str):
             value = value.decode('utf-8', 'replace')
-        elif not isinstance(value, basestring):
-            value = unicode(value)
+        elif not isinstance(value, six.string_types):
+            value = six.text_type(value)
     else:
         # Python 3.X
         if isinstance(value, bytes):

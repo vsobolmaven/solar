@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 
+from __future__ import absolute_import
 from mock import patch
 
 from solar import SolrSearcher
@@ -7,6 +8,7 @@ from solar.ext.pagination import SolrQueryWrapper
 from solar.ext.pagination.flask import Pagination
 
 from .base import TestCase
+from six.moves import zip
 
 
 class FlaskPaginationTest(TestCase):
