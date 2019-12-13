@@ -19,18 +19,8 @@ else:
     unichr = unichr
     int_types = six.integer_types
 
-if PY2:
-    
-else:
-    from itertools import zip_longest
 
-if PY2:
-    def implements_to_string(cls):
-        cls.__unicode__ = cls.__str__
-        cls.__str__ = lambda x: x.__unicode__().encode('utf-8')
-        return cls
-else:
-    implements_to_string = lambda x: x
+implements_to_string = lambda x: x
 
 
 def force_unicode(value):
