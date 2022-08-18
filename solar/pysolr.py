@@ -90,11 +90,7 @@ if os.environ.get("DEBUG_PYSOLR", "").lower() in ("true", "1"):
 
 
 def is_py3():
-    try:
-        six.string_types
-        return False
-    except NameError:
-        return True
+    return True
 
 
 IS_PY3 = is_py3()
