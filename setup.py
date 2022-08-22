@@ -18,7 +18,7 @@ def requires():
 
 setup(
     name="solar",
-    version="0.4.011.mylanium",
+    version="0.4.011.dev0",
     author="Alexander Koval",
     author_email="kovalidis@gmail.com",
     description=("A library to use solr in python projects."),
