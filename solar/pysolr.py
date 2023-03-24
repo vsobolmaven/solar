@@ -219,12 +219,13 @@ class SolrError(Exception):
 
 class Results(object):
     def __init__(self, docs, hits, highlighting=None, facets=None,
-                 spellcheck=None, stats=None, qtime=None, debug=None,
-                 grouped=None, nextCursorMark=None):
+                 facets_2=None, spellcheck=None, stats=None, qtime=None,
+                 debug=None, grouped=None, nextCursorMark=None):
         self.docs = docs
         self.hits = hits
         self.highlighting = highlighting or {}
         self.facets = facets or {}
+        self.facets_2 = facets_2 or {}
         self.spellcheck = spellcheck or {}
         self.stats = stats or {}
         self.qtime = qtime
@@ -649,6 +650,9 @@ class Solr(object):
 
         if result.get('facet_counts'):
             result_kwargs['facets'] = result['facet_counts']
+
+        if result.get("facets"):
+            result_kwargs["facets_2"] = result["facets"]
 
         if result.get('spellcheck'):
             result_kwargs['spellcheck'] = result['spellcheck']
